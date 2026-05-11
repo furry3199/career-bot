@@ -78,55 +78,7 @@ SYSTEM_PROMPT = """Ты карьерный AI-ассистент уровня se
 Если тебе отправили вакансию, проси чтобы прислали еще профиль и наоборот!
 Твоя задача:
 делать честный, понятный и структурный разбор кандидата и вакансии.
-
----
-
-📌 ГЛАВНЫЕ ПРАВИЛА:
-
-- НЕ выдумывай навыки
-- НЕ додумывай информацию
-- НЕ используй “возможно”, “скорее всего”
-- работай только с тем, что явно указано
-
----
-
-📊 ЛОГИКА АНАЛИЗА:
-
-1. Выпиши требования из вакансии
-2. Выпиши навыки из профиля
-3. Сравни их напрямую (есть / нет)
-4. Определи главные причины несоответствия
-5. Дай реалистичную оценку шансов
-
----
-
-📊 ФОРМАТ ОТВЕТА:
-
-📊 Шанс: X/100
-
-📉 Почему не берут:
-- 2–4 конкретные причины
-
-🟢 Сильные стороны:
-- только то, что явно совпадает с вакансией
-
-🔴 Чего не хватает:
-- конкретные навыки из вакансии
-
-⚠️ Главный барьер:
-- 1 ключевая причина отказа
-
-🧭 Уровень:
-- junior / junior+ / middle (с коротким объяснением)
-
-⚡ Что улучшить:
-- конкретные навыки / действия
-
-🚀 План 7 дней:
-- практические шаги
-
-💬 Отклик:
-- готовый текст для HR"""
+"""
 
 # =====================
 # 🚀 START
@@ -158,7 +110,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not service:
         return
 
-    # 💳 ВАЖНО: теперь invoice вместо ссылки
     await context.bot.send_invoice(
         chat_id=update.effective_chat.id,
         title=service["name"],
@@ -172,21 +123,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # =====================
-# ⚡ PRECHECKOUT (ОБЯЗАТЕЛЬНО)
+# ⚡ PRECHECKOUT
 # =====================
 
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.pre_checkout_query.answer(ok=True)
 
 # =====================
-# ✅ SUCCESS PAYMENT
+# ✅ SUCCESS PAYMENT (PRO FIX)
 # =====================
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    payment = update.message.successful_payment
 
-    # 💾 сохраняем PRO в БД
     cursor.execute("""
         INSERT INTO users (user_id, requests, plan)
         VALUES (?, 0, 'pro')
@@ -195,14 +144,10 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """, (user_id,))
     conn.commit()
 
-    await update.message.reply_text(
-        "✅ Оплата прошла!\n\n"
-        "💳 PRO активирован\n"
-        "🚀 Теперь у тебя безлимитный доступ"
-    )
+    await update.message.reply_text("✅ PRO активирован")
 
 # =====================
-# 🎯 HANDLER (НЕ ТРОГАЛ)
+# 🎯 HANDLER (PRO LOGIC ADDED)
 # =====================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -213,6 +158,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_state[user_id] = {"mode": "idle", "vacancy": "", "profile": ""}
 
     state = user_state[user_id]
+
+    # 🔥 GET USER PLAN
+    cursor.execute("SELECT requests, plan FROM users WHERE user_id=?", (user_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        requests = 0
+        plan = "free"
+        cursor.execute("INSERT INTO users (user_id, requests, plan) VALUES (?, 0, 'free')", (user_id,))
+        conn.commit()
+    else:
+        requests, plan = row
+
+    # 💰 LIMIT LOGIC
+    if plan != "pro" and requests >= 3:
+        await update.message.reply_text("❌ Лимит 3/3\n💳 Купи PRO")
+        return
 
     if text == "💰 Услуги":
         keyboard = [
@@ -225,61 +187,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💰 Услуги:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        return
-
-    if text == "📊 О боте":
-        await update.message.reply_text("""💼 Career AI — AI карьерный ассистент
-
-Этот бот анализирует твоё резюме и вакансию так, как это делает реальный HR.
-
-❌ Почему тебя могут не брать на работу:
-
-— резюме не соответствует вакансии
-— не хватает ключевых навыков
-— опыт подан слишком слабо
-— HR не видит ценности за 10–15 секунд
-— ты откликаешься “как все”
-
-🤖 Что делает бот:
-
-— сравнивает резюме и вакансию 1 к 1
-— находит реальные причины отказа
-— показывает слабые места без воды
-— не придумывает, а анализирует строго по фактам
-— даёт конкретные правки, которые можно сразу использовать
-
-📉 Что ты получаешь:
-
-— честный разбор от “HR-логики”
-— понимание, почему тебя игнорируют
-— список конкретных ошибок
-— что именно нужно исправить в резюме
-— план улучшения на 7 дней
-
-🚀 Результат:
-
-Ты перестаёшь “просто откликаться” и начинаешь понимать,
-как реально пройти отбор и получить оффер.""")
-        return
-
-    if text == "💳 PRO":
-        await update.message.reply_text("PRO активен")
-        return
-
-    if text == "📌 Вакансия":
-        state["mode"] = "vacancy"
-        await update.message.reply_text("📌 отправь вакансию")
-        return
-
-    if text == "👤 Профиль":
-        state["mode"] = "profile"
-        await update.message.reply_text("👤 отправь профиль")
-        return
-
-    if state["mode"] == "vacancy":
-        state["vacancy"] = text
-        state["mode"] = "idle"
-        await update.message.reply_text("✅ вакансия сохранена")
         return
 
     if state["mode"] == "profile":
@@ -297,6 +204,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             temperature=0.2
         )
 
+        # ➕ increase requests only if free
+        if plan != "pro":
+            cursor.execute("UPDATE users SET requests = requests + 1 WHERE user_id=?", (user_id,))
+            conn.commit()
+
         await update.message.reply_text(response.choices[0].message.content)
 
 # =====================
@@ -308,8 +220,6 @@ app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 app.add_handler(CallbackQueryHandler(handle_callback))
-
-# 💳 PAYMENTS HANDLERS
 app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
 app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
 
