@@ -280,4 +280,16 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 app.add_handler(CallbackQueryHandler(handle_callback))
 
 print("🚀 bot running")
-app.run_polling()
+
+import asyncio
+
+async def main():
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
