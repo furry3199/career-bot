@@ -1,6 +1,5 @@
 print("START BOT FILE")
-print("TOKEN:", TELEGRAM_BOT_TOKEN)
-print("GROQ:", GROQ_API_KEY)
+
 import sqlite3
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
@@ -8,12 +7,16 @@ from groq import Groq
 import os
 import nest_asyncio
 nest_asyncio.apply()
+
 # =====================
 # 🔑 CONFIG
 # =====================
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+print("TOKEN:", TELEGRAM_BOT_TOKEN)
+print("GROQ:", GROQ_API_KEY)
 
 client = Groq(api_key=GROQ_API_KEY)
 
