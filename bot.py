@@ -5,6 +5,8 @@ from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKe
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from groq import Groq
 import os
+import nest_asyncio
+nest_asyncio.apply()
 # =====================
 # 🔑 CONFIG
 # =====================
@@ -278,13 +280,4 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 app.add_handler(CallbackQueryHandler(handle_callback))
 
 print("🚀 bot running")
-import asyncio
-
-async def main():
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    await app.updater.idle()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+app.run_polling()
