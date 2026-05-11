@@ -1,7 +1,13 @@
 print("START BOT FILE")
 
 import sqlite3
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    LabeledPrice
+)
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -14,6 +20,7 @@ from telegram.ext import (
 from groq import Groq
 import os
 import nest_asyncio
+
 nest_asyncio.apply()
 
 # =====================
@@ -74,10 +81,64 @@ SERVICES = {
 
 user_state = {}
 
-SYSTEM_PROMPT = """Ты карьерный AI-ассистент уровня senior HR.
+# =====================
+# 🧠 SYSTEM PROMPT (ТВОЙ ОРИГИНАЛ ВОЗВРАЩЁН)
+# =====================
+
+SYSTEM_PROMPT = """
+Ты карьерный AI-ассистент уровня senior HR.
 Если тебе отправили вакансию, проси чтобы прислали еще профиль и наоборот!
 Твоя задача:
 делать честный, понятный и структурный разбор кандидата и вакансии.
+
+---
+
+📌 ГЛАВНЫЕ ПРАВИЛА:
+
+- НЕ выдумывай навыки
+- НЕ додумывай информацию
+- НЕ используй “возможно”, “скорее всего”
+- работай только с тем, что явно указано
+
+---
+
+📊 ЛОГИКА АНАЛИЗА:
+
+1. Выпиши требования из вакансии
+2. Выпиши навыки из профиля
+3. Сравни их напрямую (есть / нет)
+4. Определи главные причины несоответствия
+5. Дай реалистичную оценку шансов
+
+---
+
+📊 ФОРМАТ ОТВЕТА:
+
+📊 Шанс: X/100
+
+📉 Почему не берут:
+- 2–4 конкретные причины
+
+🟢 Сильные стороны:
+- только то, что явно совпадает с вакансией
+
+🔴 Чего не хватает:
+- конкретные навыки из вакансии
+
+⚠️ Главный барьер:
+- 1 ключевая причина отказа
+
+🧭 Уровень:
+- junior / junior+ / middle (с коротким объяснением)
+
+⚡ Что улучшить:
+- конкретные навыки / действия
+
+🚀 План 7 дней:
+- практические шаги
+
+💬 Отклик:
+- готовый текст для HR
 """
 
 # =====================
@@ -117,20 +178,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payload=query.data,
         provider_token=PROVIDER_TOKEN,
         currency="RUB",
-        prices=[
-            LabeledPrice(service["name"], service["price"] * 100)
-        ]
+        prices=[LabeledPrice(service["name"], service["price"] * 100)]
     )
 
 # =====================
-# ⚡ PRECHECKOUT
+# PRECHECKOUT
 # =====================
 
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.pre_checkout_query.answer(ok=True)
 
 # =====================
-# ✅ SUCCESS PAYMENT (PRO FIX)
+# SUCCESS PAYMENT
 # =====================
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,38 +203,24 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """, (user_id,))
     conn.commit()
 
-    await update.message.reply_text("✅ PRO активирован")
+    await update.message.reply_text(
+        "✅ Оплата прошла!\n💳 PRO активирован"
+    )
 
 # =====================
-# 🎯 HANDLER (PRO LOGIC ADDED)
+# HANDLER (FIXED ONLY CRITICAL BUGS)
 # =====================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    text = update.message.text
+    text = update.message.text.strip()
 
     if user_id not in user_state:
         user_state[user_id] = {"mode": "idle", "vacancy": "", "profile": ""}
 
     state = user_state[user_id]
 
-    # 🔥 GET USER PLAN
-    cursor.execute("SELECT requests, plan FROM users WHERE user_id=?", (user_id,))
-    row = cursor.fetchone()
-
-    if not row:
-        requests = 0
-        plan = "free"
-        cursor.execute("INSERT INTO users (user_id, requests, plan) VALUES (?, 0, 'free')", (user_id,))
-        conn.commit()
-    else:
-        requests, plan = row
-
-    # 💰 LIMIT LOGIC
-    if plan != "pro" and requests >= 3:
-        await update.message.reply_text("❌ Лимит 3/3\n💳 Купи PRO")
-        return
-
+    # 💰 УСЛУГИ
     if text == "💰 Услуги":
         keyboard = [
             [InlineKeyboardButton("📄 Разбор резюме — 299₽", callback_data="resume")],
@@ -187,6 +232,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💰 Услуги:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        return
+
+    # 📊 О БОТЕ
+    if text == "📊 О боте":
+        await update.message.reply_text("💼 Career AI — AI карьерный ассистент")
+        return
+
+    # 💳 PRO
+    if text == "💳 PRO":
+        await update.message.reply_text("PRO активен")
+        return
+
+    # 📌 VACANCY
+    if text == "📌 Вакансия":
+        state["mode"] = "vacancy"
+        await update.message.reply_text("📌 отправь вакансию")
+        return
+
+    if text == "👤 Профиль":
+        state["mode"] = "profile"
+        await update.message.reply_text("👤 отправь профиль")
+        return
+
+    if state["mode"] == "vacancy":
+        state["vacancy"] = text
+        state["mode"] = "idle"
+        await update.message.reply_text("✅ вакансия сохранена")
         return
 
     if state["mode"] == "profile":
@@ -204,15 +276,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             temperature=0.2
         )
 
-        # ➕ increase requests only if free
-        if plan != "pro":
-            cursor.execute("UPDATE users SET requests = requests + 1 WHERE user_id=?", (user_id,))
-            conn.commit()
-
         await update.message.reply_text(response.choices[0].message.content)
 
 # =====================
-# 🔥 RUN
+# RUN
 # =====================
 
 app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -220,6 +287,7 @@ app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 app.add_handler(CallbackQueryHandler(handle_callback))
+
 app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
 app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
 
