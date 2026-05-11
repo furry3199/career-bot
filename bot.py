@@ -217,7 +217,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "📊 О боте":
-        await update.message.reply_text("💼 Career AI — AI карьерный ассистент
+        await update.message.reply_text("""💼 Career AI — AI карьерный ассистент
 
 Этот бот анализирует твоё резюме и вакансию так, как это делает реальный HR.
 
@@ -248,7 +248,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🚀 Результат:
 
 Ты перестаёшь “просто откликаться” и начинаешь понимать,
-как реально пройти отбор и получить оффер.")
+как реально пройти отбор и получить оффер.""")
         return
 
     if text == "💳 PRO":
