@@ -183,11 +183,22 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 # =====================
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     payment = update.message.successful_payment
+
+    # 💾 сохраняем PRO в БД
+    cursor.execute("""
+        INSERT INTO users (user_id, requests, plan)
+        VALUES (?, 0, 'pro')
+        ON CONFLICT(user_id)
+        DO UPDATE SET plan='pro'
+    """, (user_id,))
+    conn.commit()
 
     await update.message.reply_text(
         "✅ Оплата прошла!\n\n"
-        "Начинаю разбор 🚀"
+        "💳 PRO активирован\n"
+        "🚀 Теперь у тебя безлимитный доступ"
     )
 
 # =====================
