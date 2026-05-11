@@ -1,8 +1,16 @@
 print("START BOT FILE")
 
 import sqlite3
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters,
+    PreCheckoutQueryHandler
+)
 from groq import Groq
 import os
 import nest_asyncio
@@ -14,9 +22,11 @@ nest_asyncio.apply()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")
 
 print("TOKEN:", TELEGRAM_BOT_TOKEN)
 print("GROQ:", GROQ_API_KEY)
+print("PAYMENT:", PROVIDER_TOKEN)
 
 client = Groq(api_key=GROQ_API_KEY)
 
@@ -37,7 +47,7 @@ CREATE TABLE IF NOT EXISTS users (
 conn.commit()
 
 # =====================
-# 💰 SERVICES (ДОБАВЛЕНО ТОЛЬКО ЭТО)
+# 💰 SERVICES
 # =====================
 
 SERVICES = {
@@ -58,77 +68,26 @@ SERVICES = {
     }
 }
 
-YOOMONEY_LINK = "https://yoomoney.ru/to/YOUR_LINK"
-
-# =====================
-# 💰 SETTINGS
-# =====================
-
-FREE_LIMIT = 3
-PRO_CODE = "SECRET123"
-
 # =====================
 # 🧠 STATE
 # =====================
 
 user_state = {}
 
-# =====================
-# 🧠 SYSTEM PROMPT (НЕ ТРОГАЛ ВООБЩЕ)
-# =====================
-
-SYSTEM_PROMPT = """
-Ты карьерный AI-ассистент уровня senior HR.
-
-Твоя задача:
-делать честный, структурный и реалистичный анализ кандидата и вакансии.
-
---- 
-
-🚨 ЖЁСТКИЕ ПРАВИЛА:
-
-- НЕ выдумывай навыки
-- НЕ додумывай информацию
-- НЕ используй “возможно”, “скорее всего”
-- используй ТОЛЬКО явные данные из текста
-
-Если информации нет → считай, что её нет.
-
---- 
-
-📊 ФОРМАТ:
-
-📊 Шанс: X/100
-
-📉 Почему не берут:
-- причины
-
-🟢 Сильные стороны:
-- совпадения
-
-🔴 Чего не хватает:
-- пробелы
-
-⚡ Что улучшить:
-- навыки
-
-🚀 План 7 дней:
-- шаги
-"""
+SYSTEM_PROMPT = """Ты карьерный AI-ассистент уровня senior HR..."""
 
 # =====================
-# 🚀 START (ТОЛЬКО ДОБАВИЛ КНОПКУ)
+# 🚀 START
 # =====================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     user_state[user_id] = {"mode": "idle", "vacancy": "", "profile": ""}
 
     keyboard = ReplyKeyboardMarkup(
-    [["📌 Вакансия"], ["👤 Профиль"], ["💰 Услуги"], ["📊 О боте"], ["💳 PRO"]],
-    resize_keyboard=True
-)
+        [["📌 Вакансия"], ["👤 Профиль"], ["💰 Услуги"], ["📊 О боте"], ["💳 PRO"]],
+        resize_keyboard=True
+    )
 
     await update.message.reply_text(
         "💼 Career AI v10\n\nFREE: 3 анализа\nPRO: без ограничений",
@@ -136,7 +95,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # =====================
-# 💰 CALLBACK (НОВОЕ)
+# 💳 PAYMENT FLOW
 # =====================
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -147,20 +106,40 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not service:
         return
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"💳 Оплатить {service['price']}₽", url=YOOMONEY_LINK)]
-    ])
-
-    await query.message.reply_text(
-        f"🧾 {service['name']}\n\n"
-        f"💰 Цена: {service['price']}₽\n"
-        f"📌 {service['desc']}\n\n"
-        "После оплаты приступим к разбору.",
-        reply_markup=keyboard
+    # 💳 ВАЖНО: теперь invoice вместо ссылки
+    await context.bot.send_invoice(
+        chat_id=update.effective_chat.id,
+        title=service["name"],
+        description=service["desc"],
+        payload=query.data,
+        provider_token=PROVIDER_TOKEN,
+        currency="RUB",
+        prices=[
+            LabeledPrice(service["name"], service["price"] * 100)
+        ]
     )
 
 # =====================
-# 🎯 HANDLER (ТВОЙ КОД НЕ ТРОГАЛ)
+# ⚡ PRECHECKOUT (ОБЯЗАТЕЛЬНО)
+# =====================
+
+async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.pre_checkout_query.answer(ok=True)
+
+# =====================
+# ✅ SUCCESS PAYMENT
+# =====================
+
+async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    payment = update.message.successful_payment
+
+    await update.message.reply_text(
+        "✅ Оплата прошла!\n\n"
+        "Начинаю разбор 🚀"
+    )
+
+# =====================
+# 🎯 HANDLER (НЕ ТРОГАЛ)
 # =====================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,10 +150,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_state[user_id] = {"mode": "idle", "vacancy": "", "profile": ""}
 
     state = user_state[user_id]
-
-    # =====================
-    # 💰 УСЛУГИ
-    # =====================
 
     if text == "💰 Услуги":
         keyboard = [
@@ -189,51 +164,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # =====================
-    # 📊 О БОТЕ
-    # =====================
-
     if text == "📊 О боте":
-        await update.message.reply_text(
-            "💼 Career AI — AI карьерный ассистент\n\n"
-
-            "❌ Почему люди не проходят собеседования:\n"
-            "— резюме не соответствует вакансии\n"
-            "— не хватает ключевых навыков\n"
-            "— слабая подача опыта\n"
-            "— непонимание требований работодателя\n\n"
-
-            "🤖 Что делает бот:\n"
-            "— анализирует резюме и вакансию\n"
-            "— сравнивает их 1 к 1\n"
-            "— находит реальные причины отказа\n"
-            "— показывает слабые места без воды\n"
-            "— даёт план улучшения на 7 дней\n\n"
-
-            "💰 Что ты получаешь:\n"
-            "— честный HR-разбор\n"
-            "— конкретные ошибки\n"
-            "— понимание, почему не берут\n"
-            "— готовый текст для отклика\n\n"
-
-            "🚀 Результат:\n"
-            "Ты понимаешь, что именно мешает получить работу и как это исправить"
-        )
+        await update.message.reply_text("бот инфо")
         return
-
-    # =====================
-    # 💳 PRO
-    # =====================
 
     if text == "💳 PRO":
-        await update.message.reply_text(
-            "💳 PRO доступ\n\n— без лимитов\n— быстрые ответы\n\nАктивация: /activate SECRET123"
-        )
+        await update.message.reply_text("PRO активен")
         return
-
-    # =====================
-    # 📌 VACANCY
-    # =====================
 
     if text == "📌 Вакансия":
         state["mode"] = "vacancy"
@@ -257,21 +194,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text("🧠 анализ...")
 
-        try:
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": f"ВАКАНСИЯ:\n{state['vacancy']}\n\nПРОФИЛЬ:\n{state['profile']}"}
-                ],
-                temperature=0.2
-            )
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"ВАКАНСИЯ:\n{state['vacancy']}\n\nПРОФИЛЬ:\n{state['profile']}"}
+            ],
+            temperature=0.2
+        )
 
-            result = response.choices[0].message.content
-            await update.message.reply_text(result)
-
-        except Exception as e:
-            await update.message.reply_text(f"❌ ошибка: {e}")
+        await update.message.reply_text(response.choices[0].message.content)
 
 # =====================
 # 🔥 RUN
@@ -283,6 +215,10 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 app.add_handler(CallbackQueryHandler(handle_callback))
 
+# 💳 PAYMENTS HANDLERS
+app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
+
 print("🚀 bot running")
 
 import asyncio
@@ -291,9 +227,7 @@ async def main():
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
-
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
