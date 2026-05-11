@@ -1,13 +1,7 @@
 print("START BOT FILE")
 
 import sqlite3
-from telegram import (
-    Update,
-    ReplyKeyboardMarkup,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    LabeledPrice
-)
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -82,7 +76,7 @@ SERVICES = {
 user_state = {}
 
 # =====================
-# 🧠 SYSTEM PROMPT (ТВОЙ ОРИГИНАЛ ВОЗВРАЩЁН)
+# 🧠 SYSTEM PROMPT (НЕ ТРОГАЛ)
 # =====================
 
 SYSTEM_PROMPT = """
@@ -142,6 +136,25 @@ SYSTEM_PROMPT = """
 """
 
 # =====================
+# DB HELP
+# =====================
+
+def get_user(user_id):
+    cursor.execute("SELECT requests, plan FROM users WHERE user_id=?", (user_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        cursor.execute("INSERT INTO users (user_id, requests, plan) VALUES (?, 0, 'free')", (user_id,))
+        conn.commit()
+        return 0, "free"
+
+    return row
+
+def add_request(user_id):
+    cursor.execute("UPDATE users SET requests = requests + 1 WHERE user_id=?", (user_id,))
+    conn.commit()
+
+# =====================
 # 🚀 START
 # =====================
 
@@ -160,7 +173,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # =====================
-# 💳 PAYMENT FLOW
+# PAYMENT CALLBACK
 # =====================
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -196,19 +209,17 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = update.effective_user.id
 
     cursor.execute("""
-        INSERT INTO users (user_id, requests, plan)
-        VALUES (?, 0, 'pro')
-        ON CONFLICT(user_id)
-        DO UPDATE SET plan='pro'
+    INSERT INTO users (user_id, requests, plan)
+    VALUES (?, 0, 'pro')
+    ON CONFLICT(user_id)
+    DO UPDATE SET plan='pro'
     """, (user_id,))
     conn.commit()
 
-    await update.message.reply_text(
-        "✅ Оплата прошла!\n💳 PRO активирован"
-    )
+    await update.message.reply_text("✅ PRO активирован")
 
 # =====================
-# HANDLER (FIXED ONLY CRITICAL BUGS)
+# HANDLER
 # =====================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -220,7 +231,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state = user_state[user_id]
 
-    # 💰 УСЛУГИ
+    # =====================
+    # SERVICES BUTTONS
+    # =====================
+
     if text == "💰 Услуги":
         keyboard = [
             [InlineKeyboardButton("📄 Разбор резюме — 299₽", callback_data="resume")],
@@ -234,7 +248,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # 📊 О БОТЕ
     if text == "📊 О боте":
         await update.message.reply_text("""💼 Career AI — AI карьерный ассистент
 
@@ -270,12 +283,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 как реально пройти отбор и получить оффер.""")
         return
 
-    # 💳 PRO
     if text == "💳 PRO":
-        await update.message.reply_text("PRO активен")
+        await update.message.reply_text("PRO активируется после оплаты")
         return
 
-    # 📌 VACANCY
     if text == "📌 Вакансия":
         state["mode"] = "vacancy"
         await update.message.reply_text("📌 отправь вакансию")
@@ -292,9 +303,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ вакансия сохранена")
         return
 
+    # =====================
+    # 🔥 ANALYSIS + LIMIT LOGIC
+    # =====================
+
     if state["mode"] == "profile":
         state["profile"] = text
         state["mode"] = "idle"
+
+        requests, plan = get_user(user_id)
+
+        if plan != "pro" and requests >= 3:
+            await update.message.reply_text("🚫 Лимит 3/3 исчерпан\n💳 Купи PRO")
+            return
 
         await update.message.reply_text("🧠 анализ...")
 
@@ -308,6 +329,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text(response.choices[0].message.content)
+
+        if plan != "pro":
+            add_request(user_id)
 
 # =====================
 # RUN
