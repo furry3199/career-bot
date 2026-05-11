@@ -1,5 +1,6 @@
-print("IMPORT OK")
-
+print("START BOT FILE")
+print("TOKEN:", TELEGRAM_BOT_TOKEN)
+print("GROQ:", GROQ_API_KEY)
 import sqlite3
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
