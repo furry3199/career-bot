@@ -344,6 +344,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if plan != "pro":
             add_request(user_id)
+                await update.message.reply_text(
+        "❌ Сначала выбери:\n\n"
+        "📌 Вакансия — чтобы отправить вакансию\n"
+        "👤 Профиль — чтобы отправить резюме"
+    )
 
 # =====================
 # RUN
