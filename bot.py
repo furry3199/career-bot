@@ -297,7 +297,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("👤 отправь профиль")
         return
 
-    if state["mode"] == "vacancy":
+    if state["mode"] == "vacancy" and text not in [
+    "📌 Вакансия",
+    "👤 Профиль",
+    "💰 Услуги",
+    "📊 О боте",
+    "💳 PRO"
+]:
         state["vacancy"] = text
         state["mode"] = "idle"
         await update.message.reply_text("✅ вакансия сохранена")
@@ -307,7 +313,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔥 ANALYSIS + LIMIT LOGIC
     # =====================
 
-    if state["mode"] == "profile":
+    if state["mode"] == "profile" and text not in [
+    "📌 Вакансия",
+    "👤 Профиль",
+    "💰 Услуги",
+    "📊 О боте",
+    "💳 PRO"
+]:
         state["profile"] = text
         state["mode"] = "idle"
 
